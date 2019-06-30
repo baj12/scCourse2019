@@ -1,0 +1,203 @@
+---
+title: "illumina data"
+output: html_document
+---
+
+```{r}
+getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", gbmMat = gbmMat) {
+  if (ver > 0) {
+    ensemblOld <- useEnsembl(biomart = "ensembl", version = ver, dataset = dataset)
+  } else {
+    ensemblOld <- useEnsembl(biomart = "ensembl", dataset = dataset)
+  }
+  
+  if (!startsWith(rownames(gbmMat)[1], "ENS")) {
+    vals <- rownames(gbmMat)
+    filters <- "external_gene_name"
+  } else {
+    vals <- rownames(gbmMat)
+    filters <- "ensembl_gene_id"
+  }
+  featureData <- tryCatch(
+    getBM(
+      attributes = c(
+        "ensembl_gene_id",
+        "external_gene_name",
+        "description",
+        "chromosome_name",
+        "genomic_coding_start",
+        "genomic_coding_end",
+        "gene_biotype"
+      ),
+      filters = filters,
+      values = vals,
+      mart = ensemblOld
+    ),
+    error = function(cond) {
+      return("biomart connection error")
+    },
+    warning = function(cond) {
+      return("Biomart warning")
+    }
+  )
+  featureData$genomic_coding_start[is.na(featureData$genomic_coding_start)] <- 0
+  featureData$genomic_coding_end[is.na(featureData$genomic_coding_end)] <- 0
+  featureData_summary <- featureData %>%
+    group_by(ensembl_gene_id, external_gene_name, description, chromosome_name, gene_biotype) %>%
+    summarize(
+      min_genomic_coding_start = min(genomic_coding_start, na.rm = TRUE),
+      max_genomic_coding_end = max(genomic_coding_end, na.rm = TRUE)
+    )
+  featureData_summary <- as.data.frame(featureData_summary)
+  rownames(featureData_summary) <- featureData_summary$ensembl_gene_id
+  featureData_summary <- featureData_summary[, -1]
+  
+  colnames(featureData_summary) <- c(
+    "Associated.Gene.Name",
+    "Description",
+    "Chromosome.Name",
+    "Gene.Biotype",
+    "Gene.Start..bp.",
+    "Gene.End..bp."
+  )
+  featureData_summary <- featureData_summary[, c(
+    "Description",
+    "Chromosome.Name",
+    "Gene.Start..bp.",
+    "Gene.End..bp.",
+    "Associated.Gene.Name",
+    "Gene.Biotype"
+  )]
+  return(featureData_summary)
+}
+```
+
+
+
+```{r setup, include=FALSE}
+library(rhdf5)
+library(SingleCellExperiment)
+library(biomaRt)
+library(Seurat)
+library(dplyr)
+library(singleCellTK)
+```
+
+# load data
+
+## load from h5 file
+```{r h5 data}
+
+h5file = "~/Downloads/5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5"
+scexSeurat = Read10X_h5(h5file, use.names = TRUE, unique.features = TRUE)
+names(scexSeurat)
+
+```
+
+
+## load from directory 
+```{r}
+
+```
+
+# preprocess
+
+## rename samples
+
+## combine samples
+
+# process
+
+```{r}
+
+pd = data.frame(barcodes = sub("(.*)-(.*)", "\\1", colnames(scexSeurat[[1]])),
+                sampleNames = sub(".*-(.*)", "\\1", colnames(scexSeurat[[1]]))
+)
+pd$barcodes = as.character(pd$barcodes)
+rownames(pd) = colnames(scexSeurat[[1]])
+pd = cbind(pd, as.data.frame(t(scexSeurat[[2]])))
+str(pd)
+
+scexSeurat[[1]] = scexSeurat[[1]][-which(rowSums(scexSeurat[[1]]) == 0),]
+
+featureData_summary93 <- getFeatureDataSummary(ver = 93, dataset = "hsapiens_gene_ensembl", gbmMat = scexSeurat[[1]])
+
+featureData_summary = featureData_summary93
+# length(rownames(scexSeurat[[1]])[!rownames(scexSeurat[[1]]) %in% featureData_summary$Associated.Gene.Name ])
+# genes not in annotation.
+rownames(scexSeurat[[1]])[!rownames(scexSeurat[[1]]) %in% featureData_summary$Associated.Gene.Name ]
+
+featuredata <- featureData_summary[featureData_summary$Associated.Gene.Name %in% rownames(scexSeurat[[1]]), ]
+
+# remove duplicates
+featuredata = featuredata[!duplicated(featuredata$Associated.Gene.Name),]
+
+# only take genes where we have descriptions
+# matrix requires numeric index
+scIdx = which(rownames(scexSeurat[[1]]) %in% featuredata$Associated.Gene.Name )
+scexSeurat[[1]]  = scexSeurat[[1]][scIdx,]
+
+rownames(featuredata) = featuredata$Associated.Gene.Name
+
+#check that  rownames are included in both
+sum(!rownames(featuredata) %in% rownames(scexSeurat[[1]]))
+sum(!rownames(scexSeurat[[1]]) %in% rownames(featuredata))
+
+# reorder rows
+featuredata = featuredata[rownames(scexSeurat[[1]]),]
+featuredata$id = featuredata$Associated.Gene.Name
+featuredata$symbol = featuredata$Associated.Gene.Name
+colnames(pd)[colnames(pd)=="barcodes"] <- "barcode"
+# scEx - rowData doesn't contain id and/or symbol columns
+# ×
+# featuredata - one of is missing: symbol, Description)
+scEx = SingleCellExperiment(assay = list(counts=scexSeurat[[1]]),
+                            colData = pd,
+                            rowData = featuredata
+                            )
+outfile = paste0(basename(h5file),".RData")
+
+save(file = outfile, list=c("scEx"))
+
+scEx = normalizeSCE(scEx, exprs_values = "counts", return_log = TRUE,
+  log_exprs_offset = NULL, centre_size_factors = TRUE,
+  preserve_zeroes = FALSE)
+
+scExS = as.Seurat(scEx, 
+  project = "SingleCellExperiment")
+
+save.image(file = "perpIllumina.RData")
+
+```
+
+
+```{r}
+load("perpIllumina.RData")
+calculateAverage(scEx, exprs_values = "counts",
+use_size_factors = TRUE, subset_row = NULL,
+BPPARAM = SerialParam())
+
+cpm(scEx) <- calculateCPM(scEx, exprs_values = "counts", use_size_factors = TRUE,
+subset_row = NULL)
+
+scEx <- calculateQCMetrics(scEx)
+
+```
+
+```{r seurat}
+pbmc <- CreateSeuratObject(counts = assays(scEx)[["counts"]], project = "scCourse2019", min.cells = 3, min.features = 200)
+
+save(file = "pbmc5k.seurat.RData", "pbmc")
+
+```
+
+## singleCellTK
+
+https://compbiomed.github.io/sctk_docs/articles/v01-Introduction_to_singleCellTK.html
+
+```{r singleCellTK}
+library(singleCellTK)
+singleCellTK(scEx)
+
+```
+
