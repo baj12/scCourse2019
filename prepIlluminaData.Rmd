@@ -81,7 +81,6 @@ library(biomaRt)
 library(Seurat)
 library(dplyr)
 library(singleCellTK)
-library(Seurat)
 ```
 
 # load data
