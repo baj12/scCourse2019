@@ -75,21 +75,30 @@ getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", g
 
 
 ```{r setup, include=FALSE}
-library(rhdf5)
+library(hdf5r)
 library(SingleCellExperiment)
 library(biomaRt)
 library(Seurat)
 library(dplyr)
 library(singleCellTK)
+library(Seurat)
 ```
 
 # load data
+
+download from
+
+https://support.10xgenomics.com/single-cell-gene-expression/datasets
+
+* 5k Peripheral blood mononuclear cells (PBMCs) from a healthy donor with cell surface proteins (v3 chemistry)
+
+** Feature / cell matrix HDF5 (filtered)	16.34 MB	3366a47283177fe9af143d5819fad61f
 
 ## load from h5 file
 ```{r h5 data}
 
 h5file = "~/Downloads/5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5"
-scexSeurat = Read10X_h5(h5file, use.names = TRUE, unique.features = TRUE)
+scexSeurat = Seurat::Read10X_h5(h5file, use.names = TRUE, unique.features = TRUE)
 names(scexSeurat)
 
 ```
@@ -109,17 +118,28 @@ names(scexSeurat)
 # process
 
 ```{r}
+# pd holds the meta data for the cells
 
 pd = data.frame(barcodes = sub("(.*)-(.*)", "\\1", colnames(scexSeurat[[1]])),
                 sampleNames = sub(".*-(.*)", "\\1", colnames(scexSeurat[[1]]))
 )
 pd$barcodes = as.character(pd$barcodes)
 rownames(pd) = colnames(scexSeurat[[1]])
+
+# scexSeurat[[2]]: the cytometry data
 pd = cbind(pd, as.data.frame(t(scexSeurat[[2]])))
+
+# we also create and load the log transformed version for visualization purposes.
+logdf = log(as.data.frame(t(scexSeurat[[2]])))
+logdf = do.call(data.frame,lapply(logdf, function(x) replace(x, is.infinite(x),0)))
+colnames(logdf) = paste0("lg_",colnames(logdf))
+pd = cbind(pd, logdf)
 str(pd)
 
+# remove genes with zero counts over all cells
 scexSeurat[[1]] = scexSeurat[[1]][-which(rowSums(scexSeurat[[1]]) == 0),]
 
+# load some additional meta data for genes from ENSEMBL
 featureData_summary93 <- getFeatureDataSummary(ver = 93, dataset = "hsapiens_gene_ensembl", gbmMat = scexSeurat[[1]])
 
 featureData_summary = featureData_summary93

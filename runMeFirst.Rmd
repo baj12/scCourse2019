@@ -1,0 +1,21 @@
+---
+title: "runmeFirst"
+author: "Bernd Jagla"
+date: "7/1/2019"
+output: html_document
+---
+
+These are the very latest updates that need to be installed.
+
+```{r setup, include=FALSE}
+BiocManager::install(c("iSEE","BiocStyle", "org.Hs.eg.db"), ask=FALSE)
+devtools::install_github("C3BI-pasteur-fr/UTechSCB-SCHNAPPs")
+BiocManager::install("singleCellTK", ask=FALSE)
+install.packages("hdf5r")
+BiocManager::install(c("AnnotationDbi", "BiocGenerics", "GO.db", "pcaMethods"))
+devtools::install_github("hms-dbmi/pagoda2")
+reticulate::py_install(packages = 'umap-learn')
+
+```
+
+

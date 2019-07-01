@@ -1,0 +1,27 @@
+---
+title: "overview"
+author: "Bernd Jagla"
+date: "7/1/2019"
+output: html_document
+---
+
+
+# Overview of the course
+
+## prepare data
+
+prepIlluminaData.Rmd
+
+## SingleCellExperiment class
+
+SingleCellExperiment.Rmd
+
+## QC 
+
+umis.Rmd
+
+
+## Resources
+
+https://bioconductor.org/packages/release/workflows/html/simpleSingleCell.html
+

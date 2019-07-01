@@ -1,0 +1,495 @@
+---
+title: "sc_protocol_basic"
+output: html_document
+---
+
+The following material provides an overview of a basic analysis of single cell transcriptome data.  The material is largely derived (sometimes verbatim) from the following sources:
+
+1.  Seurat2:  http://satijalab.org/seurat/  
+2.  Pagoda2:  https://github.com/hms-dbmi/pagoda2
+3.  Shekhar et al. https://github.com/broadinstitute/BipolarCell2016
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library('pagoda2')
+library(Matrix)
+library(colorRamps)
+library(dplyr)
+
+# globals used below for organism-specific settings (human vs. mouse)
+get_goSets_func = NULL
+get_go_env = NULL
+org = "human"
+```
+
+# Data set choice:
+```{r}
+
+##################################################
+## ********* USER DEFINED SECTION ***************
+##################################################
+
+## Data set options:   un-comment just one of thhe 'counts_matrix_filename' options.
+
+##########################################
+# **  human peripheral blood mononuclear cells from: https://support.10xgenomics.com/single-cell-gene-expression/datasets
+#counts_matrix_filename = "data/pbmcs/pbmc3k.counts.matrix.gz"; org="human"
+
+##############################
+# ** mouse retinal bipolar cells, from Shekhar et al. Cell 2016
+#counts_matrix_filename = "data/retinal_bipolar_cells/retinal_bipolar.dat.gz"; org="mouse"
+load("5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5.RData")
+
+```
+
+
+```{r}
+## Pagoda variable settings - depend on organism type
+if (org == "human") {
+  get_goSets_func = p2.generate.human.go.web
+  get_go_env = p2.generate.human.go
+  suppressMessages(library(org.Hs.eg.db))
+  ALIAS2EG = org.Hs.egALIAS2EG
+} else if (org == "mouse") {
+  get_goSets_func = p2.generate.mouse.go.web
+  get_go_env = pagoda2:::p2.generate.mouse.go
+  suppressMessages(library(org.Mm.eg.db))
+  ALIAS2EG = org.Mm.egALIAS2EG
+} else {
+  stop("Error, not sure what organism we're using")
+}
+```
+
+##############################
+# Data preparation
+##############################
+
+```{r}
+# Read data from your file, rows as genes colums as cells
+# myCountMatrix <- read.table(gzfile(counts_matrix_filename), header=T, row.names=1)
+
+myCountMatrix <- as.matrix(assays(scEx)[["counts"]])
+```
+
+Look at the matrix:
+```{r}
+myCountMatrix[1:10, 1:3]
+```
+
+How big is the matrix?
+
+```{r}
+dim(myCountMatrix) # report num rows and cols
+```
+
+Size in bytes?
+```{r}
+object.size(myCountMatrix)
+```
+
+Convert the matrix to a sparse matrix
+```{r}
+myCountMatrixSparse <- Matrix(as.matrix(myCountMatrix), sparse = T)
+
+# take a look at it:
+myCountMatrixSparse[1:10,1:3]
+```
+
+```{r}
+
+# check dimensions:
+dim(myCountMatrixSparse)
+
+# check size:
+object.size(myCountMatrixSparse)
+
+# size reduction:
+object.size(myCountMatrixSparse) / object.size(myCountMatrix)
+
+```
+
+
+
+```{r}
+# Remove the original matrix to reduce memory usage
+rm(myCountMatrix)
+myCountMatrixSparse.prefiltered = myCountMatrixSparse # store just in case
+```
+
+## Filtering 'bad' cells
+
+Look at the summary counts
+
+```{r}
+#par(mfrow=c(1,2), mar = c(3.5,3.5,2.0,0.5), mgp = c(2,0.65,0), cex = 1.0)
+
+reads_per_cell = Matrix::colSums(myCountMatrixSparse)
+reads_per_gene = Matrix::rowSums(myCountMatrixSparse)
+genes_per_cell = Matrix::colSums(myCountMatrixSparse>0) # count gene only if it has non-zero reads mapped.
+cells_per_gene = Matrix::rowSums(myCountMatrixSparse>0) # only count cells where the gene is expressed
+
+hist(log10(reads_per_cell+1),main='reads per cell',col='wheat')
+hist(log10(genes_per_cell+1), main='genes per cell', col='wheat')
+plot(reads_per_cell, genes_per_cell, log='xy', col='wheat')
+hist(log10(reads_per_gene+1),main='reads per gene',col='wheat')
+```
+
+### Plot genes per cell with cells ranked accordingly.
+
+```{r}
+plot(sort(genes_per_cell), xlab='cell', log='y', main='genes per cell (ordered)')
+
+```
+
+### Cell filtering criteria:  define min and max genes per cell
+
+```{r}
+##################################################
+## ********* USER DEFINED SECTION ***************
+##################################################
+
+#  set upper and lower thresholds for genes per cell:
+MIN_GENES_PER_CELL = 350  ## user-defined setting
+MAX_GENES_PER_CELL = 1800  ## user-defined setting
+
+# now replot with the thresholds being shown:
+plot(sort(genes_per_cell), xlab='cell', log='y', main='genes per cell (ordered)')
+abline(h=MIN_GENES_PER_CELL, col='green')  # lower threshold
+abline(h=MAX_GENES_PER_CELL, col='green') # upper threshold
+```
+
+
+### Examine percent mitochondrial read content
+
+```{r}
+# define the mitochondrial genes
+mito_genes = grep("^mt-", rownames(myCountMatrixSparse) , ignore.case=T, value=T)
+print(mito_genes)
+```
+
+
+
+```{r}
+# compute pct mito
+mito_gene_read_counts = Matrix::colSums(myCountMatrixSparse[mito_genes,])
+pct_mito = mito_gene_read_counts / reads_per_cell * 100
+plot(sort(pct_mito))
+```
+
+Decide on maximum allowed percent mitochondrial reads:
+
+```{r}
+##################################################
+## ********* USER DEFINED SECTION ***************
+##################################################
+
+MAX_PCT_MITO = 10   ## user-defined setting
+
+plot(sort(pct_mito))
+abline(h=MAX_PCT_MITO, col='red')
+
+```
+
+
+## cell selection as per Peter Karchenko - the Pagoda way
+
+```{r}
+df = data.frame(reads_per_cell=reads_per_cell, genes_per_cell=genes_per_cell)
+head(df)
+```
+
+### Plot gene_per_cell vs. reads_per_cell, define outliers
+
+```{r}
+library(MASS)
+df = df[order(df$reads_per_cell),] # order by reads_per_cell
+plot(df, log='xy')
+m <- rlm(genes_per_cell~reads_per_cell,data=df) # robust linear model, not sens to outliers
+p.level = 1e-3
+# predict genes_per_cell based on observed reads_per_cell
+suppressWarnings(pb <- data.frame(predict(m, interval='prediction', 
+                                          level = 1-p.level, # define conf interval
+                                          type="response")))
+polygon(c(df$reads_per_cell, rev(df$reads_per_cell)),
+        c(pb$lwr, rev(pb$upr)), col=adjustcolor(2,alpha=0.1), border = NA)
+
+# identifier outliers as having observed genes_per_cell outside the prediction confidence interval
+outliers <- rownames(df)[df$genes_per_cell > pb$upr | df$genes_per_cell < pb$lwr];
+points(df[outliers,],col=2,cex=0.6)
+```
+
+
+### Now, actually filter out 'bad' cells (and genes)
+
+```{r}
+myCountMatrixSparse = myCountMatrixSparse.prefiltered # just in case we re-run this block using different thresholds.
+
+###############################################################
+# prune genes, require a gene to be expressed in at least 3 cells
+
+myCountMatrixSparse.prefiltered = myCountMatrixSparse
+myCountMatrixSparse = myCountMatrixSparse[cells_per_gene >= 3,]  ## user can change this if needed.
+
+###############################################################
+# prune cells
+valid_cells = colnames(myCountMatrixSparse) # all cells
+message('starting with: ', length(valid_cells), ' cells') # number starting with
+
+## remove cells based on gene count criteria:
+valid_cells = valid_cells[genes_per_cell >= MIN_GENES_PER_CELL & genes_per_cell <= MAX_GENES_PER_CELL]  # set values based on your evaluation above
+message('after filtering low and high gene count outliers: ', length(valid_cells), ' cells') # number after filtering based gene count thresholds
+
+## remove cells having excessive mito read content
+valid_cells = valid_cells[valid_cells %in% names(pct_mito)[pct_mito <= MAX_PCT_MITO]]
+message('after removing high-mito cells: ', length(valid_cells), ' cells') # number remaining after high-mito cells removed
+
+## remove cells identified as outliers via the Karchenko method
+valid_cells = valid_cells[ ! valid_cells %in% outliers]
+message('after removing final outliers: ', length(valid_cells), ' cells') # number surviving outlier detection
+
+## update the count matrix to contain only the valid cells
+myCountMatrixSparse = myCountMatrixSparse[,valid_cells]
+```
+
+
+
+
+
+```{r}
+library(Seurat)
+
+pbmc <- CreateSeuratObject(counts = assays(scEx)[["counts"]], project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc
+```
+
+###  examine contents of seurat2obj
+```{r}
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+```
+
+```{r}
+# Visualize QC metrics as a violin plot
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+
+```{r}
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used
+# for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+
+plot1 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+# save original data before subsetting
+pbmcOrg = pbmc
+```
+
+```{r, fig.width=10}
+pbmc <- subset(pbmcOrg, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 16)
+plot1 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+pbmc
+```
+
+
+```{r}
+pbmc <- NormalizeData(pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+
+
+
+
+```{r}
+pbmc <- NormalizeData(pbmc)
+```
+
+
+```{r, fig.width=10}
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(pbmc), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2))
+```
+
+
+```{r}
+all.genes <- rownames(pbmc)
+pbmc <- ScaleData(pbmc, features = all.genes)
+```
+
+
+```{r}
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+
+```
+
+
+```{r}
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+
+```
+
+
+```{r}
+VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+
+```
+
+
+```{r}
+DimPlot(pbmc, reduction = "pca")
+
+```
+
+
+```{r}
+DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+
+```
+
+```{r, fig.heigth=250, fig.width=15}
+DimHeatmap(pbmc, dims = 1:15, cells = 500, balanced = TRUE)
+
+```
+
+```{r}
+# NOTE: This process can take a long time for big datasets, comment out for expediency. More
+# approximate techniques such as those implemented in ElbowPlot() can be used to reduce
+# computation time
+pbmc <- JackStraw(pbmc, num.replicate = 100)
+pbmc <- ScoreJackStraw(pbmc, dims = 1:20)
+```
+
+
+```{r}
+JackStrawPlot(pbmc, dims = 1:20)
+
+```
+
+
+
+```{r}
+ElbowPlot(pbmc)
+
+```
+
+```{r}
+pbmc <- FindNeighbors(pbmc, dims = 1:5)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+```
+
+```{r}
+head(Idents(pbmc), 5)
+
+```
+
+```{r}
+# If you haven't installed UMAP, you can do so via reticulate::py_install(packages =
+# 'umap-learn')
+pbmc <- RunTSNE(pbmc, dims = 1:20)
+# pbmc <- RunUMAP(pbmc, dims = 1:10)
+```
+
+```{r}
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+DimPlot(pbmc, reduction = "tsne")
+DimPlot(pbmc, reduction = "pca")
+
+```
+
+```{r}
+saveRDS(pbmc, file = "pbmc_tutorial.rds")
+```
+
+```{r}
+# find all markers of cluster 1
+cluster1.markers <- FindMarkers(pbmc, ident.1 = 1, min.pct = 0.25)
+head(cluster1.markers, n = 5)
+```
+
+
+```{r}
+# find all markers distinguishing cluster 5 from clusters 0 and 3
+cluster5.markers <- FindMarkers(pbmc, ident.1 = 1, ident.2 = c(0,4), min.pct = 0.25)
+head(cluster5.markers, n = 5)
+```
+
+```{r}
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_logFC)
+```
+
+
+
+```{r}
+cluster1.markers <- FindMarkers(pbmc, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
+```
+
+
+
+```{r}
+VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+```
+
+
+
+```{r}
+VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
+
+```
+
+
+
+```{r, fig.width=10, fig.height=10}
+FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP", 
+    "CD8A"))
+```
+
+
+
+```{r, fig.height=10}
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(pbmc, features = top10$gene) + NoLegend()
+```
+
+
+
+```{r}
+new.cluster.ids <- c("Naive CD4 T", "Memory CD4 T", "CD14+ Mono", "B", "CD8 T", "FCGR3A+ Mono", 
+    "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
+DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+
+```
+
+
+
+```{r}
+saveRDS(pbmc, file = "../output/pbmc3k_final.rds")
+
+```
+
+
+
+```{r}
+
+```
+
+
+
+```{r}
+
+```
+
+
+
