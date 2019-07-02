@@ -89,6 +89,16 @@ getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", g
 ```
 
 
+
+```{r setup, include=FALSE}
+library(hdf5r)
+library(SingleCellExperiment)
+library(biomaRt)
+library(Seurat)
+library(dplyr)
+library(singleCellTK)
+```
+
 # load data
 
 download from

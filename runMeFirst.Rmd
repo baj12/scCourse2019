@@ -18,7 +18,6 @@ BiocManager::install("biomaRt", ask=FALSE)
 install.packages("Seurat", ask=FALSE)
 install.packages("reticulate")
 
-
 ```
 
 
