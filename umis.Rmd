@@ -13,9 +13,8 @@ author:
   - *EMBL
   - Wellcome Trust Sanger Institute, Wellcome Genome Campus, Hinxton, Cambridge CB10 1SA, United Kingdom
 - name: Bernd Jagla
-  - affiliation:
-  Pasteur Paris
-  modified and adapted to the Pasteur Single Cell and beyond course by Bernd Jagla
+  affiliation: 
+  - Pasteur  Paris
 date: "`r Sys.Date()`"
 output: 
   BiocStyle::html_document:

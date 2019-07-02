@@ -4,6 +4,7 @@ output: html_document
 ---
 
 
+# loading libraries
 
 ```{r setup, include=FALSE}
 library(hdf5r)
@@ -16,8 +17,12 @@ library(Seurat)
 library(scater)
 library(singleCellTK)
 library(SCHNAPPs)
+library(iSEE)
 ```
 
+# getFeatureDataSummary
+
+internal function used to get annotations from ENSEMBL
 
 ```{r getFeatureDataSummary}
 getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", gbmMat = gbmMat) {
@@ -26,7 +31,7 @@ getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", g
   } else {
     ensemblOld <- useEnsembl(biomart = "ensembl", dataset = dataset)
   }
-  
+
   if (!startsWith(rownames(gbmMat)[1], "ENS")) {
     vals <- rownames(gbmMat)
     filters <- "external_gene_name"
@@ -67,7 +72,7 @@ getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", g
   featureData_summary <- as.data.frame(featureData_summary)
   rownames(featureData_summary) <- featureData_summary$ensembl_gene_id
   featureData_summary <- featureData_summary[, -1]
-  
+
   colnames(featureData_summary) <- c(
     "Associated.Gene.Name",
     "Description",
@@ -89,11 +94,14 @@ getFeatureDataSummary <- function(ver = 0, dataset = "mmusculus_gene_ensembl", g
 ```
 
 
+
 # load data
 
 download from
 
 https://support.10xgenomics.com/single-cell-gene-expression/datasets
+
+(has already been done)
 
 * 5k Peripheral blood mononuclear cells (PBMCs) from a healthy donor with cell surface proteins (v3 chemistry)
 
@@ -101,20 +109,24 @@ https://support.10xgenomics.com/single-cell-gene-expression/datasets
 
 ## load from h5 file
 ```{r h5 data}
-
-h5file = "~/../Downloads/5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5"
-scexSeurat = Seurat::Read10X_h5(h5file, use.names = TRUE, unique.features = TRUE)
+if (Sys.info()["sysname"] == "Darwin") {
+  h5file <- "~/Downloads/5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5"
+} else {
+  h5file <- "~/../Downloads/5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5"
+}
+scexSeurat <- Seurat::Read10X_h5(h5file, use.names = TRUE, unique.features = TRUE)
 names(scexSeurat)
-
+save(file = "scexSeurat.RData", list = c("scexSeurat"))
 ```
 
 
 ## load from directory 
+
+here you would potentially put other ways of importing data
 ```{r empty}
 
 ```
 
-# preprocess
 
 ## rename samples
 
@@ -124,105 +136,114 @@ names(scexSeurat)
 
 ```{r schnapps}
 # pd holds the meta data for the cells
-
-pd = data.frame(barcodes = sub("(.*)-(.*)", "\\1", colnames(scexSeurat[[1]])),
-                sampleNames = sub(".*-(.*)", "\\1", colnames(scexSeurat[[1]]))
+pd <- data.frame(
+  barcodes = sub("(.*)-(.*)", "\\1", colnames(scexSeurat[[1]])),
+  sampleNames = sub(".*-(.*)", "\\1", colnames(scexSeurat[[1]]))
 )
-pd$barcodes = as.character(pd$barcodes)
-rownames(pd) = colnames(scexSeurat[[1]])
+# barcodes is a name that is needed by SCHNAPPs
+pd$barcodes <- as.character(pd$barcodes)
+rownames(pd) <- colnames(scexSeurat[[1]])
 
 # scexSeurat[[2]]: the cytometry data
-pd = cbind(pd, as.data.frame(t(scexSeurat[[2]])))
+pd <- cbind(pd, as.data.frame(t(scexSeurat[[2]])))
 
 # we also create and load the log transformed version for visualization purposes.
-logdf = log(as.data.frame(t(scexSeurat[[2]])))
-logdf = do.call(data.frame,lapply(logdf, function(x) replace(x, is.infinite(x),0)))
-colnames(logdf) = paste0("lg_",colnames(logdf))
-pd = cbind(pd, logdf)
+logdf <- log(as.data.frame(t(scexSeurat[[2]])))
+logdf <- do.call(data.frame, lapply(logdf, function(x) replace(x, is.infinite(x), 0)))
+colnames(logdf) <- paste0("lg_", colnames(logdf))
+pd <- cbind(pd, logdf)
 str(pd)
 
 # remove genes with zero counts over all cells
-scexSeurat[[1]] = scexSeurat[[1]][-which(rowSums(scexSeurat[[1]]) == 0),]
+scexSeurat[[1]] <- scexSeurat[[1]][-which(rowSums(scexSeurat[[1]]) == 0), ]
 
 # load some additional meta data for genes from ENSEMBL
-featureData_summary93 <- getFeatureDataSummary(ver = 93, dataset = "hsapiens_gene_ensembl", gbmMat = scexSeurat[[1]])
-
-featureData_summary = featureData_summary93
-# length(rownames(scexSeurat[[1]])[!rownames(scexSeurat[[1]]) %in% featureData_summary$Associated.Gene.Name ])
+if (!file.exists("feature93.RData")) {
+  featureData_summary93 <- getFeatureDataSummary(ver = 93, dataset = "hsapiens_gene_ensembl", gbmMat = scexSeurat[[1]])
+  save(file = "feature93.RData", list = ("featureData_summary93"))
+} else {
+  load("feature93.RData")
+}
+featureData_summary <- featureData_summary93
 # genes not in annotation.
 rownames(scexSeurat[[1]])[!rownames(scexSeurat[[1]]) %in% featureData_summary$Associated.Gene.Name ]
 
 featuredata <- featureData_summary[featureData_summary$Associated.Gene.Name %in% rownames(scexSeurat[[1]]), ]
 
 # remove duplicates
-featuredata = featuredata[!duplicated(featuredata$Associated.Gene.Name),]
+featuredata <- featuredata[!duplicated(featuredata$Associated.Gene.Name), ]
 
 # only take genes where we have descriptions
 # matrix requires numeric index
-scIdx = which(rownames(scexSeurat[[1]]) %in% featuredata$Associated.Gene.Name )
-scexSeurat[[1]]  = scexSeurat[[1]][scIdx,]
+scIdx <- which(rownames(scexSeurat[[1]]) %in% featuredata$Associated.Gene.Name)
+scexSeurat[[1]] <- scexSeurat[[1]][scIdx, ]
 
-rownames(featuredata) = featuredata$Associated.Gene.Name
+rownames(featuredata) <- featuredata$Associated.Gene.Name
 
-#check that  rownames are included in both
+# check that  rownames are included in both
 sum(!rownames(featuredata) %in% rownames(scexSeurat[[1]]))
 sum(!rownames(scexSeurat[[1]]) %in% rownames(featuredata))
 
 # reorder rows
-featuredata = featuredata[rownames(scexSeurat[[1]]),]
-featuredata$id = featuredata$Associated.Gene.Name
-featuredata$symbol = featuredata$Associated.Gene.Name
-colnames(pd)[colnames(pd)=="barcodes"] <- "barcode"
+featuredata <- featuredata[rownames(scexSeurat[[1]]), ]
+featuredata$id <- featuredata$Associated.Gene.Name
+featuredata$symbol <- featuredata$Associated.Gene.Name
+colnames(pd)[colnames(pd) == "barcodes"] <- "barcode"
 # scEx - rowData doesn't contain id and/or symbol columns
 # ×
 # featuredata - one of is missing: symbol, Description)
-scEx = SingleCellExperiment(assay = list(counts=scexSeurat[[1]]),
-                            colData = pd,
-                            rowData = featuredata
-                            )
+scEx <- SingleCellExperiment(
+  assay = list(counts = scexSeurat[[1]]),
+  colData = pd,
+  rowData = featuredata
+)
 
-outfile = paste0(basename(h5file),".RData")
+outfile <- paste0(basename(h5file), ".RData")
 
-save(file = outfile, list=c("scEx"))
+save(file = outfile, list = c("scEx"))
 
 # just a subset randomly sampled
-scExSmall = scEx[ ,sample(1:ncol(scEx),1111)]
-                            
-outfile = paste0(basename(h5file),"small.RData")
+scExSmall <- scEx[, sample(1:ncol(scEx), 1111)]
 
-save(file = outfile, list=c("scExSmall"))
+outfile <- paste0(basename(h5file), "small.RData")
+
+save(file = outfile, list = c("scExSmall"))
 
 
-scEx = normalizeSCE(scEx, exprs_values = "counts", return_log = TRUE,
+scEx <- normalizeSCE(scEx,
+  exprs_values = "counts", return_log = TRUE,
   log_exprs_offset = NULL, centre_size_factors = TRUE,
-  preserve_zeroes = FALSE)
+  preserve_zeroes = FALSE
+)
 
-scExS = as.Seurat(scEx, 
-  project = "SingleCellExperiment")
+scExS <- as.Seurat(scEx,
+  project = "SingleCellExperiment"
+)
 
 save.image(file = "perpIllumina.RData")
-
 ```
 
 
 ```{r calculateQCMetrics}
 # load("perpIllumina.RData")
-calculateAverage(scEx, exprs_values = "counts",
-use_size_factors = TRUE, subset_row = NULL,
-BPPARAM = SerialParam())
+ave_counts <- calculateAverage(scEx,
+  exprs_values = "counts",
+  use_size_factors = TRUE, subset_row = NULL,
+  BPPARAM = SerialParam()
+)
 
-cpm(scEx) <- calculateCPM(scEx, exprs_values = "counts", use_size_factors = TRUE,
-subset_row = NULL)
+cpm(scEx) <- calculateCPM(scEx,
+  exprs_values = "counts", use_size_factors = TRUE,
+  subset_row = NULL
+)
 
 scEx <- calculateQCMetrics(scEx)
-
 ```
 
 ```{r seurat}
 pbmc <- CreateSeuratObject(counts = assays(scEx)[["counts"]], project = "scCourse2019", min.cells = 3, min.features = 200)
 
 save(file = "pbmc5k.seurat.RData", "pbmc")
-
 ```
 
 ## singleCellTK
@@ -232,7 +253,27 @@ https://compbiomed.github.io/sctk_docs/articles/v01-Introduction_to_singleCellTK
 ```{r singleCellTK}
 
 # singleCellTK(scEx)
+```
+
+
+## iSEE
+
+https://bioconductor.org/packages/release/bioc/html/iSEE.html
+
+```{r iSEE}
 # iSEE(scEx)
+
+```
+
+
+## SCHNAPPs
+
+https://github.com/C3BI-pasteur-fr/UTechSCB-SCHNAPPs
+https://c3bi-pasteur-fr.github.io/UTechSCB-SCHNAPPs/
+
+
+```{r}
 # schnapps()
+
 ```
 

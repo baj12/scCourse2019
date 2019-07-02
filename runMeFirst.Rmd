@@ -6,19 +6,18 @@ output: html_document
 ---
 
 These are the very latest updates that need to be installed.
+Please run each line individually to ensure that there are no problems.
 
 ```{r setup, include=FALSE}
-BiocManager::install(c("iSEE","BiocStyle", "org.Hs.eg.db"), ask=FALSE)
+BiocManager::install(c("iSEE", "BiocStyle", "org.Hs.eg.db"), ask = FALSE)
 devtools::install_github("C3BI-pasteur-fr/UTechSCB-SCHNAPPs")
-BiocManager::install("singleCellTK", ask=FALSE)
-install.packages(c("hdf5r","reticulate"))
-BiocManager::install(c("AnnotationDbi", "BiocGenerics", "GO.db", "pcaMethods"), ask=FALSE)
-BiocManager::install("SingleCellExperiment", ask=FALSE)
-BiocManager::install("biomaRt", ask=FALSE)
-install.packages("Seurat", ask=FALSE)
+BiocManager::install("singleCellTK", ask = FALSE)
+install.packages(c("hdf5r", "reticulate"))
+BiocManager::install(c("AnnotationDbi", "BiocGenerics", "GO.db", "pcaMethods"), ask = FALSE)
+BiocManager::install("SingleCellExperiment", ask = FALSE)
+BiocManager::install("biomaRt", ask = FALSE)
+install.packages("Seurat", ask = FALSE)
 install.packages("reticulate")
-
-
 ```
 
 

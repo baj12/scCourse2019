@@ -18,6 +18,10 @@ SingleCellExperiment.Rmd
 
 ## QC 
 
+PBMC.Rmd
+
+## Alternative workflow
+
 umis.Rmd
 
 

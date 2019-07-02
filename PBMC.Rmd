@@ -11,10 +11,13 @@ The following material provides an overview of a basic analysis of single cell t
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library('pagoda2')
+# library('pagoda2')
 library(Matrix)
 library(colorRamps)
 library(dplyr)
+library(SingleCellExperiment)
+library(MASS)
+library(Seurat)
 
 # globals used below for organism-specific settings (human vs. mouse)
 get_goSets_func = NULL
@@ -23,7 +26,7 @@ org = "human"
 ```
 
 # Data set choice:
-```{r}
+```{r load data}
 
 ##################################################
 ## ********* USER DEFINED SECTION ***************
@@ -43,16 +46,17 @@ load("5k_pbmc_protein_v3_filtered_feature_bc_matrix.h5.RData")
 ```
 
 
-```{r}
+```{r pagoda}
 ## Pagoda variable settings - depend on organism type
+## pagoda is removed from this tutorial as it was not possible to install in time.
 if (org == "human") {
-  get_goSets_func = p2.generate.human.go.web
-  get_go_env = p2.generate.human.go
+  # get_goSets_func = p2.generate.human.go.web
+  # get_go_env = p2.generate.human.go
   suppressMessages(library(org.Hs.eg.db))
   ALIAS2EG = org.Hs.egALIAS2EG
 } else if (org == "mouse") {
-  get_goSets_func = p2.generate.mouse.go.web
-  get_go_env = pagoda2:::p2.generate.mouse.go
+  # get_goSets_func = p2.generate.mouse.go.web
+  # get_go_env = pagoda2:::p2.generate.mouse.go
   suppressMessages(library(org.Mm.eg.db))
   ALIAS2EG = org.Mm.egALIAS2EG
 } else {
@@ -64,7 +68,7 @@ if (org == "human") {
 # Data preparation
 ##############################
 
-```{r}
+```{r non-dense matrix}
 # Read data from your file, rows as genes colums as cells
 # myCountMatrix <- read.table(gzfile(counts_matrix_filename), header=T, row.names=1)
 
@@ -72,30 +76,30 @@ myCountMatrix <- as.matrix(assays(scEx)[["counts"]])
 ```
 
 Look at the matrix:
-```{r}
+```{r view matrix}
 myCountMatrix[1:10, 1:3]
 ```
 
 How big is the matrix?
 
-```{r}
+```{r dim matrix}
 dim(myCountMatrix) # report num rows and cols
 ```
 
 Size in bytes?
-```{r}
+```{r marix size}
 object.size(myCountMatrix)
 ```
 
 Convert the matrix to a sparse matrix
-```{r}
+```{r sparse matrix}
 myCountMatrixSparse <- Matrix(as.matrix(myCountMatrix), sparse = T)
 
 # take a look at it:
 myCountMatrixSparse[1:10,1:3]
 ```
 
-```{r}
+```{r compare sizes}
 
 # check dimensions:
 dim(myCountMatrixSparse)
@@ -110,7 +114,7 @@ object.size(myCountMatrixSparse) / object.size(myCountMatrix)
 
 
 
-```{r}
+```{r store org}
 # Remove the original matrix to reduce memory usage
 rm(myCountMatrix)
 myCountMatrixSparse.prefiltered = myCountMatrixSparse # store just in case
@@ -120,7 +124,7 @@ myCountMatrixSparse.prefiltered = myCountMatrixSparse # store just in case
 
 Look at the summary counts
 
-```{r}
+```{r stats1}
 #par(mfrow=c(1,2), mar = c(3.5,3.5,2.0,0.5), mgp = c(2,0.65,0), cex = 1.0)
 
 reads_per_cell = Matrix::colSums(myCountMatrixSparse)
@@ -136,7 +140,7 @@ hist(log10(reads_per_gene+1),main='reads per gene',col='wheat')
 
 ### Plot genes per cell with cells ranked accordingly.
 
-```{r}
+```{r genes per cell}
 plot(sort(genes_per_cell), xlab='cell', log='y', main='genes per cell (ordered)')
 
 ```
@@ -201,7 +205,7 @@ head(df)
 ### Plot gene_per_cell vs. reads_per_cell, define outliers
 
 ```{r}
-library(MASS)
+
 df = df[order(df$reads_per_cell),] # order by reads_per_cell
 plot(df, log='xy')
 m <- rlm(genes_per_cell~reads_per_cell,data=df) # robust linear model, not sens to outliers
@@ -256,7 +260,6 @@ myCountMatrixSparse = myCountMatrixSparse[,valid_cells]
 
 
 ```{r}
-library(Seurat)
 
 pbmc <- CreateSeuratObject(counts = assays(scEx)[["counts"]], project = "pbmc3k", min.cells = 3, min.features = 200)
 pbmc
@@ -418,7 +421,7 @@ head(cluster1.markers, n = 5)
 
 ```{r}
 # find all markers distinguishing cluster 5 from clusters 0 and 3
-cluster5.markers <- FindMarkers(pbmc, ident.1 = 1, ident.2 = c(0,4), min.pct = 0.25)
+cluster5.markers <- FindMarkers(pbmc, ident.1 = 5, ident.2 = c(0,3), min.pct = 0.25)
 head(cluster5.markers, n = 5)
 ```
 
@@ -461,21 +464,21 @@ top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
 DoHeatmap(pbmc, features = top10$gene) + NoLegend()
 ```
 
-
+THIS HAS TO BE CHANGED manually!!!
 
 ```{r}
-new.cluster.ids <- c("Naive CD4 T", "Memory CD4 T", "CD14+ Mono", "B", "CD8 T", "FCGR3A+ Mono", 
+new.cluster.ids <- c("Dendritic", "NK", "Naive CD4 T", "Memory CD4 T", "CD14+ Mono", "B", "CD8 T", "FCGR3A+ Mono", 
     "NK", "DC", "Platelet")
 names(new.cluster.ids) <- levels(pbmc)
 pbmc <- RenameIdents(pbmc, new.cluster.ids)
-DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+DimPlot(pbmc, reduction = "tsne", label = TRUE, pt.size = 0.5) + NoLegend()
 
 ```
 
 
 
 ```{r}
-saveRDS(pbmc, file = "../output/pbmc3k_final.rds")
+saveRDS(pbmc, file = "pbmc3k_final.rds")
 
 ```
 
