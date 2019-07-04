@@ -144,7 +144,7 @@ pd <- data.frame(
 pd$barcodes <- as.character(pd$barcodes)
 rownames(pd) <- colnames(scexSeurat[[1]])
 
-# scexSeurat[[2]]: the cytometry data
+# scexSeurat[[2]]: the cite-seq data
 pd <- cbind(pd, as.data.frame(t(scexSeurat[[2]])))
 
 # we also create and load the log transformed version for visualization purposes.
@@ -261,7 +261,7 @@ https://compbiomed.github.io/sctk_docs/articles/v01-Introduction_to_singleCellTK
 https://bioconductor.org/packages/release/bioc/html/iSEE.html
 
 ```{r iSEE}
-# iSEE(scEx)
+iSEE(scEx )
 
 ```
 

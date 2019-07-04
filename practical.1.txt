@@ -2,3 +2,13 @@ B cells:
   cd79A, cd74,ms4a1
 
 CD19
+
+
+1. filter out unwanted/dying cells
+
+2. identify B-cells
+
+3. annotate a group called BCells
+
+4. Which genes are differentially expressed for these BCells?
+
