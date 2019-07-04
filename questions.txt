@@ -1,0 +1,48 @@
+scWG
+
+
+Questions: 
+1. modulated genes between cluster
+=> Subcluster analysis : differential gene expression 
+
+2. which cells express a known gene
+=> see 2D plot and UmiCountPerGenes
+
+3. new markers for cluster of cell?
+=> Table under Co-expression -  selected, change parameters for min "min UMI count per gene:" and "min percentage of cells expressing a genes:"
+
+4. coexpressed genes within a cluster?
+=> see 3. and 1.
+
+5. plot cell populations based on different markers
+=> see 2. 
+
+6. minimal signature of a cluster?
+=> outside of schnapps using mutal information
+or using schnapps DGE - highly expressed genes - violing plot or 2D plot using UmiCountPerGenes with those genes, color by group.
+
+7. pathway analysis how to do?
+=> Download DGE table and use somewhere else e.g. http://software.broadinstitute.org/gsea/msigdb/compute_overlaps.jsp
+
+8. identify potential doublets
+=> visually inspect before.filter count vs. Gene.count in 2D visualization
+
+
+9. identify potentially stressed cells.
+=> see 8.
+
+
+10. input to schnapps
+-> see prepIllumina.Rmd
+
+11. how to create groups of cells
+-> 2D plot, more options, select cells, click on "change current selection"
+--> the cells used for this are set by what is selcted in the dropdown called "group names"
+---> Here, "plot" means, take selection from plot
+--> cells can be added to a group by selection the appropiate check-box
+
+12. how to calculate the correlation coefficient when UmiCountPerGenes and UmiCountPerGenes2 are selected?
+=> not implemented yet, I will put it on the to-do list.
+
+
+
