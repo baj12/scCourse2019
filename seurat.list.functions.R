@@ -82,6 +82,18 @@ DimHeatmap(object = pbmc, reduction = "pca", cells = 200)
 FeaturePlot(object = pbmc, features = c("MS4A1", "CD79A"), blend = TRUE)
 DimPlot(object = pbmc) + DarkTheme()
 DimPlot(object = pbmc) + labs(title = "2,700 PBMCs clustered using Seurat and viewed\non a two-dimensional tSNE")
+
+# HoverLocator replaces the former `do.hover` argument It can also show extra data throught the `information` argument,
+# designed to work smoothly with FetchData
+plot <- DimPlot(object = pbmc) + NoLegend()
+HoverLocator(plot = plot, information = FetchData(object = pbmc, vars = c("ident", "PC_1", "nFeature_RNA")))
+
+# FeatureLocator replaces the former `do.identify`
+select.cells <- CellSelector(plot = plot)
+
+# Label points on a ggplot object
+LabelPoints(plot = plot, points = TopCells(object = pbmc[["pca"]]), repel = TRUE)
+
 #================================================
 
 # AddModuleScore

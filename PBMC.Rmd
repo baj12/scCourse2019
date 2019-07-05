@@ -261,7 +261,7 @@ myCountMatrixSparse = myCountMatrixSparse[,valid_cells]
 
 ```{r}
 
-pbmc <- CreateSeuratObject(counts = assays(scEx)[["counts"]], project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc <- CreateSeuratObject(counts = myCountMatrixSparse, project = "pbmc3k", min.cells = 3, min.features = 200)
 pbmc
 ```
 
@@ -340,8 +340,8 @@ print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
 ```
 
 
-```{r}
-VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+```{r, fig.height=10}
+VizDimLoadings(pbmc, dims = 1:4, reduction = "pca")
 
 ```
 
