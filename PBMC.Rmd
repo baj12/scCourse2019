@@ -12,6 +12,7 @@ The following material provides an overview of a basic analysis of single cell t
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 # library('pagoda2')
+
 library(Matrix)
 library(colorRamps)
 library(dplyr)
