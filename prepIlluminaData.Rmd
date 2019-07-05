@@ -18,6 +18,7 @@ library(scater)
 library(singleCellTK)
 library(SCHNAPPs)
 library(iSEE)
+library(SCORPIUS)
 ```
 
 # getFeatureDataSummary

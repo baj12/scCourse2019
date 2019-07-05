@@ -169,7 +169,17 @@ cells.located
 pbmc_small <- CellSelector(plot = plot, object = pbmc_small, ident = 'SelectedCells')
 
 
+# ======================================
+# get all feature names
+colnames(pbmc[[]])
 
 
+GetAssayData(object = pbmc, slot = "counts")
+dim(GetAssayData(object = pbmc))
+dim(pbmc)
+pbmc$nCount_RNA
+GetAssayData(object = pbmc, slot = "counts")[1:5,1:5]
+GetAssayData(object = pbmc, slot = "data")[1:5,1:5]
+GetAssayData(object = pbmc, slot = "scale.data")[1:5,1:5]
 
-
+pbmc@meta.data
